@@ -1,3 +1,4 @@
+#include "cjaeger.h"
 #include <jaegertracing/Tracer.h>
 
 namespace cjaeger {
