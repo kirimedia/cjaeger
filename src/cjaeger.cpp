@@ -17,7 +17,7 @@ private:
 typedef Wrapper<std::shared_ptr<opentracing::Tracer> > Tracer;
 typedef Wrapper<std::unique_ptr<opentracing::Span> > Span;
 
-extern "C" void *cjaeger_tracer_create(const char *service_name, const char *agent_addr) {
+extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint) {
 
 	try {
 		auto config = jaegertracing::Config(
@@ -35,7 +35,7 @@ extern "C" void *cjaeger_tracer_create(const char *service_name, const char *age
 				std::chrono::seconds(0),
 				true,
 				agent_addr,
-				""
+				collector_endpoint
 			),
 			jaegertracing::propagation::HeadersConfig(),
 			jaegertracing::baggage::RestrictionsConfig(),
@@ -50,6 +50,10 @@ extern "C" void *cjaeger_tracer_create(const char *service_name, const char *age
 	} catch (...) {
 		return NULL;
 	}
+}
+
+extern "C" void *cjaeger_tracer_create(const char *service_name, const char *agent_addr) {
+	return cjaeger_tracer_create2(service_name, agent_addr, "");
 }
 
 extern "C" void cjaeger_tracer_destroy(void *tracer) {

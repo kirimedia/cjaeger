@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint);
 void *cjaeger_tracer_create(const char *service_name, const char *agent_addr);
 void cjaeger_tracer_destroy(void *tracer);
 void *cjaeger_span_start(void *tracer, void *parent, const char *operation_name);
