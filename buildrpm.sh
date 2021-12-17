@@ -60,13 +60,6 @@ tar czf ${RPM_TOPDIR}/SOURCES/${NAME}-${CURRENT_DATETIME}.tar.gz ${PACKAGE}
 COMMIT_TIMESTAMP=`git log -n 1 --format='%ci' | awk '{ print $1, $2 }' | sed 's/[ :-]//g'`
 COMMIT_HASH=`git rev-parse --short HEAD`
 
-MULTILIB=lib
-ARCH=`arch`
-if [ "$ARCH" == "x86_64" ]
-then
-	MULTILIB=lib64
-fi
-
 VERSION_SUFFIX="%{nil}"
 if [ "${BRANCH_FOR_RPM}" != "master" ]; then
   if [ "${GITLAB_CI}" != "true" ]; then
@@ -77,5 +70,4 @@ fi
 rpmbuild -ba --clean $SPECFILE \
   --define "current_datetime ${CURRENT_DATETIME}" \
   --define "version ${VERSION}" \
-  --define "multilib ${MULTILIB}" \
   --define "version_suffix ${VERSION_SUFFIX}"

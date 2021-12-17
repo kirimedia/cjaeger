@@ -6,20 +6,19 @@ Source0:        cjaeger-%{current_datetime}.tar.gz
 BuildRoot:      %{_tmppath}/cjaeger-%{current_datetime}
 Summary:        Jaeger client c 
 License:        Apache-2.0
-%if 0%{?el7:1}
+%if 0%{rhel} <= 7
 BuildRequires:  devtoolset-7-binutils
 BuildRequires:  devtoolset-7-gcc
+BuildRequires:  cmake3
 %else
 BuildRequires:  gcc
+BuildRequires:  cmake
 %endif
-BuildRequires:  cmake3
 BuildRequires:  jaeger-client-cpp
 Requires:       jaeger-client-cpp
 
 %description
 Jaeger client c
-
-%define prefix /usr
 
 %prep
 [ "%{buildroot}" != "/" ] && rm -fr %{buildroot}
@@ -29,15 +28,13 @@ source /opt/rh/devtoolset-7/enable
 %endif
 mkdir build
 cd build
-cmake3 -DCMAKE_INSTALL_PREFIX=%{prefix} .. 
+%cmake3 $CMAKE_OPTIONS ..
 
 %build
-cd build
-make
+%make_build -C build
 
 %install
-cd build
-make DESTDIR=%{buildroot} PREFIX=%{prefix} MULTILIB=%{multilib} install
+%make_install -C build
 
 %clean
 [ "%{buildroot}" != "/" ] && rm -rf %{buildroot}
@@ -49,5 +46,5 @@ make DESTDIR=%{buildroot} PREFIX=%{prefix} MULTILIB=%{multilib} install
 /sbin/ldconfig
 
 %files
-%{prefix}/include/*
-%{prefix}/lib64/*
+%{_includedir}/*
+%{_libdir}/*
