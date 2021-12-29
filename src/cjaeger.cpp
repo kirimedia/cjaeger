@@ -91,12 +91,7 @@ extern "C" void cjaeger_span_finish(void *span) {
 
 
 extern "C" void cjaeger_span_log(void *span, const char *key, const char *value) {
-	Span *_span = (Span*)span;
-	try {
-		std::string _value(value);
-		_span->get()->Log({{key, _value}});
-	} catch (...) {
-	}
+	cjaeger_span_log2(span, key, value, strlen(value));
 }
 
 extern "C" void cjaeger_span_log2(void *span, const char *key, const char *value, size_t value_len) {
