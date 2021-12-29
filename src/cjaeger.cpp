@@ -95,10 +95,13 @@ extern "C" void cjaeger_span_log(void *span, const char *key, const char *value)
 }
 
 extern "C" void cjaeger_span_log2(void *span, const char *key, const char *value, size_t value_len) {
+	cjaeger_span_log3(span, key, strlen(key), value, value_len);
+}
+
+extern "C" void cjaeger_span_log3(void *span, const char *key, size_t key_len, const char *value, size_t value_len) {
 	Span *_span = (Span*)span;
 	try {
-		std::string _value(value, value + value_len);
-		_span->get()->Log({{key, _value}});
+		_span->get()->Log({{opentracing::string_view(key, key_len), std::string(value, value_len)}});
 	} catch (...) {
 	}
 }

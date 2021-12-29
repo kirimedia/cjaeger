@@ -14,6 +14,7 @@ void *cjaeger_span_start(void *tracer, void *parent, const char *operation_name)
 void cjaeger_span_finish(void *span);
 void cjaeger_span_log(void *span, const char *key, const char *value);
 void cjaeger_span_log2(void *span, const char *key, const char *value, size_t value_len);
+void cjaeger_span_log3(void *span, const char *key, size_t key_len, const char *value, size_t value_len);
 
 # ifdef  __cplusplus
 }
