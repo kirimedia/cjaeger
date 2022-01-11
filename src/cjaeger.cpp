@@ -1,6 +1,9 @@
 #include "cjaeger.h"
 #include <jaegertracing/Tracer.h>
 
+#define MAX_SPAN_LOG 10000
+#define SPAN_LOG_SPLIT 60000
+
 namespace cjaeger {
 
 template<class T>
@@ -103,9 +106,37 @@ extern "C" void cjaeger_span_log2(void *span, const char *key, const char *value
 }
 
 extern "C" void cjaeger_span_log3(void *span, const char *key, size_t key_len, const char *value, size_t value_len) {
-	Span *_span = (Span*)span;
+	Span *span_ = (Span*)span;
 	try {
-		_span->get()->Log({{opentracing::string_view(key, key_len), std::string(value, value_len)}});
+		auto key_ = opentracing::string_view(key, key_len);
+		if (value_len <= MAX_SPAN_LOG)
+			span_->get()->Log({{key_, std::string(value, value_len)}});
+		else {
+			auto tracer = &span_->get()->tracer();
+			auto context = &span_->get()->context();
+#define SPAN_LOG_NAME "_log_"
+#define SPAN_LOG_NAME_LEN (sizeof(SPAN_LOG_NAME) - 1)
+			char span_name[256];
+			size_t span_name_len = key_len + SPAN_LOG_NAME_LEN;
+			size_t pos = 0;
+
+			if (span_name_len > sizeof(span_name)) {
+				key_len = sizeof(span_name) - SPAN_LOG_NAME_LEN;
+				span_name_len = key_len + SPAN_LOG_NAME_LEN;
+			}
+
+			memcpy(span_name, SPAN_LOG_NAME, SPAN_LOG_NAME_LEN);
+			memcpy(span_name + SPAN_LOG_NAME_LEN, key, key_len);
+
+			do {
+				opentracing::StartSpanOptions options;
+				opentracing::ChildOf(context).Apply(options);
+				auto span = tracer->StartSpanWithOptions(opentracing::string_view(span_name, span_name_len), options);
+				auto next = std::min(value_len, pos + SPAN_LOG_SPLIT);
+				span->Log({{key_, std::string(value + pos, next - pos)}});
+				pos = next;
+			} while (pos < value_len);
+		}
 	} catch (...) {
 	}
 }
