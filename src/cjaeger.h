@@ -11,6 +11,7 @@ void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, c
 void *cjaeger_tracer_create(const char *service_name, const char *agent_addr);
 void cjaeger_tracer_destroy(void *tracer);
 void *cjaeger_span_start(void *tracer, void *parent, const char *operation_name);
+void *cjaeger_span_start2(void *tracer, void *parent, const char *operation_name, size_t operation_name_len);
 void cjaeger_span_finish(void *span);
 void cjaeger_span_log(void *span, const char *key, const char *value);
 void cjaeger_span_log2(void *span, const char *key, const char *value, size_t value_len);

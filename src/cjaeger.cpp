@@ -66,6 +66,10 @@ extern "C" void cjaeger_tracer_destroy(void *tracer) {
 }
 
 extern "C" void *cjaeger_span_start(void *tracer, void *parent, const char *operation_name) {
+	return cjaeger_span_start2(tracer, parent, operation_name, strlen(operation_name));
+}
+
+extern "C" void *cjaeger_span_start2(void *tracer, void *parent, const char *operation_name, size_t operation_name_len) {
 	try {
 		opentracing::StartSpanOptions options;
 		if (parent) {
@@ -73,7 +77,7 @@ extern "C" void *cjaeger_span_start(void *tracer, void *parent, const char *oper
 			opentracing::ChildOf(&_parent->get()->context()).Apply(options);
 		}
 		Tracer *_tracer = (Tracer*)tracer;
-		auto span = _tracer->get()->StartSpanWithOptions(operation_name, options);
+		auto span = _tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options);
 		return new Span(span);
 	} catch (...) {
 		return NULL;
