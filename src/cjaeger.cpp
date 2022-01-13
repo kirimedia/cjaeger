@@ -87,6 +87,46 @@ extern "C" void *cjaeger_span_start2(void *tracer, void *parent, const char *ope
 	}
 }
 
+extern "C" uint64_t cjaeger_span_id(void *span, uint64_t *trace_id_hi, uint64_t *trace_id_lo) {
+	Span *_span = (Span*)span;
+	uint64_t span_id;
+
+	try {
+		const jaegertracing::SpanContext &context = static_cast<jaegertracing::Span&>(*_span->get()).context();
+		span_id = context.spanID();
+		const jaegertracing::TraceID &traceID = context.traceID();
+
+		if (trace_id_hi != NULL)
+			*trace_id_hi = traceID.high();
+		if (trace_id_lo != NULL)
+			*trace_id_lo = traceID.low();
+	} catch (...) {
+		return 0;
+	}
+	return span_id;
+}
+
+extern "C" void *cjaeger_span_start_from(void *tracer, uint64_t trace_id_hi, uint64_t trace_id_lo, uint64_t parent_id, const char *operation_name, size_t operation_name_len) {
+	try {
+		// trace_id_hi is zero unless 128-bit traces are enabled
+		if (!trace_id_lo)
+			return NULL;
+
+		if (!parent_id)
+			parent_id = trace_id_lo;
+
+		unsigned char flags = static_cast<unsigned char>(jaegertracing::SpanContext::Flag::kSampled);
+		jaegertracing::SpanContext context(jaegertracing::TraceID(trace_id_hi, trace_id_lo), parent_id, 0, flags, jaegertracing::SpanContext::StrMap());
+		opentracing::StartSpanOptions options;
+		opentracing::ChildOf(&context).Apply(options);
+		Tracer *_tracer = (Tracer*)tracer;
+		auto span = _tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options);
+		return new Span(span);
+	} catch (...) {
+		return NULL;
+	}
+}
+
 extern "C" void cjaeger_span_finish(void *span) {
 	Span *_span = (Span*)span;
 	try {
