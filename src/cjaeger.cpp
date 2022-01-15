@@ -17,10 +17,60 @@ private:
 	T _obj;
 };
 
+class CJaegerHttpReader: public opentracing::HTTPHeadersReader {
+public:
+	using ForeachKeyFn = std::function<opentracing::expected<void>(opentracing::string_view key, opentracing::string_view value)>;
+	CJaegerHttpReader(cjaeger_header_trav_start trav_start, cjaeger_header_trav_each trav_each, void *trav_arg):
+		_trav_start(trav_start),
+		_trav_each(trav_each),
+		_trav_arg(trav_arg)
+	{}
+
+	opentracing::expected<void> ForeachKey(ForeachKeyFn fn) const {
+		if (_trav_each == NULL)
+			return opentracing::make_expected();
+		if (_trav_start != NULL && _trav_start(_trav_arg) != 0)
+			return opentracing::make_expected();
+		const char *name, *value;
+		size_t name_len, value_len;
+		while (!_trav_each(&name, &name_len, &value, &value_len, _trav_arg)) {
+			auto rc = fn(opentracing::string_view(name, name_len), opentracing::string_view(value, value_len));
+			if (!rc)
+				return rc;
+		}
+		return opentracing::make_expected();
+	}
+
+private:
+	cjaeger_header_trav_start _trav_start;
+	cjaeger_header_trav_each _trav_each;
+	void *_trav_arg;
+};
+
+class CJaegerHttpWriter: public opentracing::HTTPHeadersWriter {
+public:
+	CJaegerHttpWriter(cjaeger_header_set header_set, void *header_set_arg):
+		_header_set(header_set),
+		_header_set_arg(header_set_arg)
+	{}
+
+	opentracing::expected<void> Set(opentracing::string_view key, opentracing::string_view value) const {
+		if (_header_set == NULL)
+			return opentracing::make_expected();
+		if (_header_set(key.data(), key.length(), value.data(), value.length(), _header_set_arg) < 0)
+			throw std::runtime_error("Cannot set header");
+		return opentracing::make_expected();
+	}
+
+private:
+	cjaeger_header_set _header_set;
+	void *_header_set_arg;
+};
+
 typedef Wrapper<std::shared_ptr<opentracing::Tracer> > Tracer;
 typedef Wrapper<std::unique_ptr<opentracing::Span> > Span;
 
-extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint) {
+extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint, const cjaeger_tracer_headers_config *headers_config) {
 
 	try {
 		auto config = jaegertracing::Config(
@@ -40,7 +90,11 @@ extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *ag
 				agent_addr,
 				collector_endpoint
 			),
-			jaegertracing::propagation::HeadersConfig(),
+			jaegertracing::propagation::HeadersConfig(
+				headers_config ? headers_config->jaeger_debug_header : "",
+				headers_config ? headers_config->jaeger_baggage_header : "",
+				headers_config ? headers_config->trace_context_header_name : "",
+				headers_config ? headers_config->trace_baggage_header_prefix : ""),
 			jaegertracing::baggage::RestrictionsConfig(),
 			service_name,
 			std::vector<jaegertracing::Tag>(),
@@ -54,7 +108,7 @@ extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *ag
 }
 
 extern "C" void *cjaeger_tracer_create(const char *service_name, const char *agent_addr) {
-	return cjaeger_tracer_create2(service_name, agent_addr, "");
+	return cjaeger_tracer_create2(service_name, agent_addr, "", NULL);
 }
 
 extern "C" void cjaeger_tracer_destroy(void *tracer) {
@@ -118,6 +172,36 @@ extern "C" void *cjaeger_span_start_from(void *tracer, uint64_t trace_id_hi, uin
 		opentracing::ChildOf(&context).Apply(options);
 		Tracer *_tracer = (Tracer*)tracer;
 		return new Span(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
+	} catch (...) {
+		return NULL;
+	}
+}
+
+extern "C" int cjaeger_span_headers_set(void *span, cjaeger_header_set header_set, void *header_set_arg) {
+	Span *span_ = (Span*)span;
+	try {
+		auto tracer = &span_->get()->tracer();
+		CJaegerHttpWriter writer(header_set, header_set_arg);
+
+		auto success = tracer->Inject(span_->get()->context(), writer);
+
+		return success ? 0 : -1;
+	} catch (...) {
+		return -1;
+	}
+}
+
+extern "C" void *cjaeger_span_start_headers(void *tracer, cjaeger_header_trav_start trav_start, cjaeger_header_trav_each trav_each, void *trav_arg, const char *operation_name, size_t operation_name_len) {
+	Tracer *tracer_ = (Tracer*)tracer;
+	try {
+		CJaegerHttpReader reader(trav_start, trav_each, trav_arg);
+
+		auto context_may_be = tracer_->get()->Extract(reader);
+		if (!context_may_be)
+			return NULL;
+		opentracing::StartSpanOptions options;
+		opentracing::ChildOf(context_may_be->get()).Apply(options);
+		return new Span(tracer_->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
 	} catch (...) {
 		return NULL;
 	}
