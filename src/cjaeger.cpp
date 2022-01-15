@@ -9,7 +9,7 @@ namespace cjaeger {
 template<class T>
 class Wrapper {
 public:
-	Wrapper(T& obj): _obj(std::move(obj)) {}
+	Wrapper(T&& obj): _obj(std::move(obj)) {}
 	T& get() {
 		return _obj;
 	}
@@ -47,9 +47,7 @@ extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *ag
 			jaegertracing::propagation::Format::JAEGER
 		);
 
-		auto tracer = jaegertracing::Tracer::make(config);
-
-		return new Tracer(tracer);
+		return new Tracer(jaegertracing::Tracer::make(config));
 	} catch (...) {
 		return NULL;
 	}
@@ -80,8 +78,7 @@ extern "C" void *cjaeger_span_start2(void *tracer, void *parent, const char *ope
 			opentracing::ChildOf(&_parent->get()->context()).Apply(options);
 		}
 		Tracer *_tracer = (Tracer*)tracer;
-		auto span = _tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options);
-		return new Span(span);
+		return new Span(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
 	} catch (...) {
 		return NULL;
 	}
@@ -120,8 +117,7 @@ extern "C" void *cjaeger_span_start_from(void *tracer, uint64_t trace_id_hi, uin
 		opentracing::StartSpanOptions options;
 		opentracing::ChildOf(&context).Apply(options);
 		Tracer *_tracer = (Tracer*)tracer;
-		auto span = _tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options);
-		return new Span(span);
+		return new Span(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
 	} catch (...) {
 		return NULL;
 	}
