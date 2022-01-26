@@ -15,6 +15,11 @@ typedef struct cjaeger_tracer_headers_config {
     const char *trace_baggage_header_prefix;
 } cjaeger_tracer_headers_config;
 
+#define CJAEGER_PROPAGATION_JAEGER  (1 << 0)
+#define CJAEGER_PROPAGATION_W3C     (1 << 1)
+#define CJAEGER_PROPAGATION_ANY     (CJAEGER_PROPAGATION_JAEGER | CJAEGER_PROPAGATION_W3C)
+
+void *cjaeger_tracer_create3(const char *service_name, const char *agent_addr, const char *collector_endpoint, unsigned flags, const cjaeger_tracer_headers_config *headers_config);
 void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint, const cjaeger_tracer_headers_config *headers_config);
 void *cjaeger_tracer_create(const char *service_name, const char *agent_addr);
 void cjaeger_tracer_destroy(void *tracer);
