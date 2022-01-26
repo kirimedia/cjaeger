@@ -86,7 +86,7 @@ extern "C" void *cjaeger_tracer_create3(const char *service_name, const char *ag
 
 		auto config = jaegertracing::Config(
 			false,
-			false,
+			!!(flags & CJAEGER_TRACEID_128BIT),
 			jaegertracing::samplers::Config(
 				"const",
 				1,
