@@ -70,12 +70,23 @@ private:
 typedef Wrapper<std::shared_ptr<opentracing::Tracer> > Tracer;
 typedef Wrapper<std::unique_ptr<opentracing::Span> > Span;
 
-extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint, const cjaeger_tracer_headers_config *headers_config) {
+extern "C" void *cjaeger_tracer_create3(const char *service_name, const char *agent_addr, const char *collector_endpoint, unsigned flags, const cjaeger_tracer_headers_config *headers_config) {
 
 	try {
+		jaegertracing::propagation::Format propagationFormat = jaegertracing::propagation::Format::JAEGER;
+
+		if (!!(flags & CJAEGER_PROPAGATION_ANY)) {
+			switch (flags & CJAEGER_PROPAGATION_ANY) {
+			case CJAEGER_PROPAGATION_JAEGER: propagationFormat = jaegertracing::propagation::Format::JAEGER; break;
+			case CJAEGER_PROPAGATION_W3C: propagationFormat = jaegertracing::propagation::Format::W3C; break;
+			default:
+				return NULL;
+			}
+		}
+
 		auto config = jaegertracing::Config(
 			false,
-			false,
+			!!(flags & CJAEGER_TRACEID_128BIT),
 			jaegertracing::samplers::Config(
 				"const",
 				1,
@@ -98,13 +109,17 @@ extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *ag
 			jaegertracing::baggage::RestrictionsConfig(),
 			service_name,
 			std::vector<jaegertracing::Tag>(),
-			jaegertracing::propagation::Format::JAEGER
+			propagationFormat
 		);
 
 		return new Tracer(jaegertracing::Tracer::make(config));
 	} catch (...) {
 		return NULL;
 	}
+}
+
+extern "C" void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint, const cjaeger_tracer_headers_config *headers_config) {
+	return cjaeger_tracer_create3(service_name, agent_addr, collector_endpoint, CJAEGER_PROPAGATION_JAEGER, headers_config);
 }
 
 extern "C" void *cjaeger_tracer_create(const char *service_name, const char *agent_addr) {
