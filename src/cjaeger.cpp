@@ -3,6 +3,7 @@
 
 #define MAX_SPAN_LOG 10000
 #define SPAN_LOG_SPLIT 60000
+#define SPAN_CHUNK_MAX 50000
 
 namespace cjaeger {
 
@@ -13,8 +14,46 @@ public:
 	T& get() {
 		return _obj;
 	}
+	T& set(T&& obj) {
+		return _obj = std::move(obj);
+	}
 private:
 	T _obj;
+};
+
+typedef Wrapper<std::shared_ptr<opentracing::Tracer> > Tracer;
+typedef Wrapper<std::unique_ptr<opentracing::Span> > Span;
+
+class ChunkedSpan: public Span {
+public:
+	ChunkedSpan(std::unique_ptr<opentracing::Span>&& obj): Span(std::move(obj)), stored(0) {
+		_context = static_cast<jaegertracing::Span&>(*get()).context();
+	}
+	const jaegertracing::SpanContext& context() {
+		return _context;
+	}
+	void consume(uint64_t amount) {
+		static const opentracing::string_view span_chunk_key = "_continue_";
+
+		if ((stored += amount) <= SPAN_CHUNK_MAX)
+			return;
+		auto tracer = &get()->tracer();
+		opentracing::StartSpanOptions options;
+		opentracing::ChildOf(&_context).Apply(options);
+		if (orig_obj.get() == nullptr)
+			orig_obj.swap(get());
+		set(tracer->StartSpanWithOptions(span_chunk_key, options));
+		stored = amount;
+	}
+	void Finish() {
+		get()->Finish();
+		if (orig_obj.get() != nullptr)
+			orig_obj->Finish();
+	}
+private:
+	std::unique_ptr<opentracing::Span> orig_obj;
+	jaegertracing::SpanContext _context;
+	uint64_t stored;
 };
 
 class CJaegerHttpReader: public opentracing::HTTPHeadersReader {
@@ -66,9 +105,6 @@ private:
 	cjaeger_header_set _header_set;
 	void *_header_set_arg;
 };
-
-typedef Wrapper<std::shared_ptr<opentracing::Tracer> > Tracer;
-typedef Wrapper<std::unique_ptr<opentracing::Span> > Span;
 
 extern "C" void *cjaeger_tracer_create3(const char *service_name, const char *agent_addr, const char *collector_endpoint, unsigned flags, const cjaeger_tracer_headers_config *headers_config) {
 
@@ -143,22 +179,22 @@ extern "C" void *cjaeger_span_start2(void *tracer, void *parent, const char *ope
 	try {
 		opentracing::StartSpanOptions options;
 		if (parent) {
-			Span *_parent = (Span*)parent;
-			opentracing::ChildOf(&_parent->get()->context()).Apply(options);
+			auto _parent = (ChunkedSpan*)parent;
+			opentracing::ChildOf(&_parent->context()).Apply(options);
 		}
 		Tracer *_tracer = (Tracer*)tracer;
-		return new Span(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
+		return new ChunkedSpan(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
 	} catch (...) {
 		return NULL;
 	}
 }
 
 extern "C" uint64_t cjaeger_span_id(void *span, uint64_t *trace_id_hi, uint64_t *trace_id_lo) {
-	Span *_span = (Span*)span;
+	auto _span = (ChunkedSpan*)span;
 	uint64_t span_id;
 
 	try {
-		const jaegertracing::SpanContext &context = static_cast<jaegertracing::Span&>(*_span->get()).context();
+		auto context = _span->context();
 		span_id = context.spanID();
 		const jaegertracing::TraceID &traceID = context.traceID();
 
@@ -186,19 +222,19 @@ extern "C" void *cjaeger_span_start_from(void *tracer, uint64_t trace_id_hi, uin
 		opentracing::StartSpanOptions options;
 		opentracing::ChildOf(&context).Apply(options);
 		Tracer *_tracer = (Tracer*)tracer;
-		return new Span(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
+		return new ChunkedSpan(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
 	} catch (...) {
 		return NULL;
 	}
 }
 
 extern "C" int cjaeger_span_headers_set(void *span, cjaeger_header_set header_set, void *header_set_arg) {
-	Span *span_ = (Span*)span;
+	auto span_ = (ChunkedSpan*)span;
 	try {
 		auto tracer = &span_->get()->tracer();
 		CJaegerHttpWriter writer(header_set, header_set_arg);
 
-		auto success = tracer->Inject(span_->get()->context(), writer);
+		auto success = tracer->Inject(span_->context(), writer);
 
 		return success ? 0 : -1;
 	} catch (...) {
@@ -216,16 +252,16 @@ extern "C" void *cjaeger_span_start_headers(void *tracer, cjaeger_header_trav_st
 			return NULL;
 		opentracing::StartSpanOptions options;
 		opentracing::ChildOf(context_may_be->get()).Apply(options);
-		return new Span(tracer_->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
+		return new ChunkedSpan(tracer_->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
 	} catch (...) {
 		return NULL;
 	}
 }
 
 extern "C" void cjaeger_span_finish(void *span) {
-	Span *_span = (Span*)span;
+	auto _span = (ChunkedSpan*)span;
 	try {
-		_span->get()->Finish();
+		_span->Finish();
 	} catch (...) {
 	}
 	delete _span;
@@ -241,14 +277,15 @@ extern "C" void cjaeger_span_log2(void *span, const char *key, const char *value
 }
 
 extern "C" void cjaeger_span_log3(void *span, const char *key, size_t key_len, const char *value, size_t value_len) {
-	Span *span_ = (Span*)span;
+	auto span_ = (ChunkedSpan*)span;
 	try {
 		auto key_ = opentracing::string_view(key, key_len);
-		if (value_len <= MAX_SPAN_LOG)
+		if (value_len <= MAX_SPAN_LOG) {
+			span_->consume(key_len + value_len + 8);
 			span_->get()->Log({{key_, std::string(value, value_len)}});
-		else {
+		} else {
 			auto tracer = &span_->get()->tracer();
-			auto context = &span_->get()->context();
+			auto context = &span_->context();
 #define SPAN_LOG_NAME "_log_"
 #define SPAN_LOG_NAME_LEN (sizeof(SPAN_LOG_NAME) - 1)
 			char span_name[256];
