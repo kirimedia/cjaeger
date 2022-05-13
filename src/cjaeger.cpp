@@ -176,11 +176,19 @@ extern "C" void *cjaeger_span_start(void *tracer, void *parent, const char *oper
 }
 
 extern "C" void *cjaeger_span_start2(void *tracer, void *parent, const char *operation_name, size_t operation_name_len) {
+	return cjaeger_span_start3(tracer, parent, operation_name, operation_name_len, 0);
+}
+
+extern "C" void *cjaeger_span_start3(void *tracer, void *parent, const char *operation_name, size_t operation_name_len, unsigned flags) {
 	try {
 		opentracing::StartSpanOptions options;
+		static jaegertracing::SpanContext debug_root_context(jaegertracing::TraceID(0, 0), 0, 0, 0, jaegertracing::SpanContext::StrMap(), "1");
+
 		if (parent) {
 			auto _parent = (ChunkedSpan*)parent;
 			opentracing::ChildOf(&_parent->context()).Apply(options);
+		} else if (!!(flags & CJAEGER_SPAN_DEBUG)) {
+			opentracing::ChildOf(&debug_root_context).Apply(options);
 		}
 		Tracer *_tracer = (Tracer*)tracer;
 		return new ChunkedSpan(_tracer->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
@@ -206,6 +214,17 @@ extern "C" uint64_t cjaeger_span_id(void *span, uint64_t *trace_id_hi, uint64_t 
 		return 0;
 	}
 	return span_id;
+}
+
+extern "C" bool cjaeger_span_debug(void *span) {
+	auto _span = (ChunkedSpan*)span;
+
+	try {
+		auto context = _span->context();
+		return context.isDebug();
+	} catch (...) {
+		return false;
+	}
 }
 
 extern "C" void *cjaeger_span_start_from(void *tracer, uint64_t trace_id_hi, uint64_t trace_id_lo, uint64_t parent_id, const char *operation_name, size_t operation_name_len) {
