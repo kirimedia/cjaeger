@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef  __cplusplus
 extern "C" {
@@ -24,9 +25,13 @@ void *cjaeger_tracer_create3(const char *service_name, const char *agent_addr, c
 void *cjaeger_tracer_create2(const char *service_name, const char *agent_addr, const char *collector_endpoint, const cjaeger_tracer_headers_config *headers_config);
 void *cjaeger_tracer_create(const char *service_name, const char *agent_addr);
 void cjaeger_tracer_destroy(void *tracer);
+
+#define CJAEGER_SPAN_DEBUG          (1 << 0)
 void *cjaeger_span_start(void *tracer, void *parent, const char *operation_name);
 void *cjaeger_span_start2(void *tracer, void *parent, const char *operation_name, size_t operation_name_len);
+void *cjaeger_span_start3(void *tracer, void *parent, const char *operation_name, size_t operation_name_len, unsigned flags);
 uint64_t cjaeger_span_id(void *span, uint64_t *trace_id_hi, uint64_t *trace_id_lo);
+bool cjaeger_span_debug(void *span);
 void *cjaeger_span_start_from(void *tracer, uint64_t trace_id_hi, uint64_t trace_id_lo, uint64_t parent_id, const char *operation_name, size_t operation_name_len);
 typedef int (*cjaeger_header_set)(const char *name, size_t name_len, const char *value, size_t value_len, void *arg);
 typedef int (*cjaeger_header_trav_start)(void *arg);
