@@ -11,7 +11,7 @@ HunterGate(
     LOCAL
 )
 
-project(cjaeger VERSION 0.4)
+project(cjaeger VERSION 0.5)
 
 hunter_add_package(thrift)
 find_package(thrift CONFIG REQUIRED)
