@@ -269,8 +269,12 @@ extern "C" void *cjaeger_span_start_headers(void *tracer, cjaeger_header_trav_st
 		auto context_may_be = tracer_->get()->Extract(reader);
 		if (!context_may_be)
 			return NULL;
+		auto context = context_may_be->get();
+		auto jaeger_context = dynamic_cast<jaegertracing::SpanContext*>(context);
+		if (jaeger_context == nullptr || !jaeger_context->isValid())
+			return NULL;
 		opentracing::StartSpanOptions options;
-		opentracing::ChildOf(context_may_be->get()).Apply(options);
+		opentracing::ChildOf(context).Apply(options);
 		return new ChunkedSpan(tracer_->get()->StartSpanWithOptions(opentracing::string_view(operation_name, operation_name_len), options));
 	} catch (...) {
 		return NULL;
