@@ -42,6 +42,10 @@ void cjaeger_span_finish(void *span);
 void cjaeger_span_log(void *span, const char *key, const char *value);
 void cjaeger_span_log2(void *span, const char *key, const char *value, size_t value_len);
 void cjaeger_span_log3(void *span, const char *key, size_t key_len, const char *value, size_t value_len);
+void cjaeger_span_logd(void *span, const char *key, size_t key_len, int64_t value);
+void cjaeger_span_logu(void *span, const char *key, size_t key_len, uint64_t value);
+void cjaeger_span_logfp(void *span, const char *key, size_t key_len, double value);
+void cjaeger_span_logb(void *span, const char *key, size_t key_len, bool value);
 
 # ifdef  __cplusplus
 }

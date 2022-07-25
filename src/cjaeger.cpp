@@ -1,6 +1,8 @@
 #include "cjaeger.h"
 #include <jaegertracing/Tracer.h>
 
+#define INT64_MAX_LEN (sizeof("-9223372036854775808") - 1)
+#define UINT64_MAX_LEN (sizeof("18446744073709551615") - 1)
 #define MAX_SPAN_LOG 10000
 #define SPAN_LOG_SPLIT 60000
 #define SPAN_CHUNK_MAX 50000
@@ -331,6 +333,53 @@ extern "C" void cjaeger_span_log3(void *span, const char *key, size_t key_len, c
 				span->Log({{key_, std::string(value + pos, next - pos)}});
 				pos = next;
 			} while (pos < value_len);
+		}
+	} catch (...) {
+	}
+}
+
+#define CJAEGER_SPAN_LOG_TRIV_IMPL(name, type) \
+extern "C" void cjaeger_span_log ## name(void *span, const char *key, size_t key_len, type value) { \
+	auto span_ = (ChunkedSpan*)span; \
+	try { \
+		auto key_ = opentracing::string_view(key, key_len); \
+		span_->consume(key_len + sizeof(value) + 4); \
+		span_->get()->Log({{key_, value}}); \
+	} catch (...) { \
+	} \
+}
+CJAEGER_SPAN_LOG_TRIV_IMPL(fp, double)
+CJAEGER_SPAN_LOG_TRIV_IMPL(b, bool)
+
+extern "C" void cjaeger_span_logd(void *span, const char *key, size_t key_len, int64_t value) {
+	auto span_ = (ChunkedSpan*)span;
+	try {
+		auto key_ = opentracing::string_view(key, key_len);
+		if (value <= 0x20000000000000LL && value >= -0x20000000000000LL) {
+			span_->consume(key_len + sizeof(value) + 4);
+			span_->get()->Log({{key_, value}});
+		} else {
+			char buf[INT64_MAX_LEN + 1];
+			int value_len = snprintf(buf, sizeof(buf), "%" PRId64, value);
+			span_->consume(key_len + value_len + 8);
+			span_->get()->Log({{key_, std::string(buf, value_len)}});
+		}
+	} catch (...) {
+	}
+}
+
+extern "C" void cjaeger_span_logu(void *span, const char *key, size_t key_len, uint64_t value) {
+	auto span_ = (ChunkedSpan*)span;
+	try {
+		auto key_ = opentracing::string_view(key, key_len);
+		if (value <= 0x20000000000000LL) {
+			span_->consume(key_len + sizeof(value) + 4);
+			span_->get()->Log({{key_, value}});
+		} else {
+			char buf[UINT64_MAX_LEN + 1];
+			int value_len = snprintf(buf, sizeof(buf), "%" PRIu64, value);
+			span_->consume(key_len + value_len + 8);
+			span_->get()->Log({{key_, std::string(buf, value_len)}});
 		}
 	} catch (...) {
 	}
