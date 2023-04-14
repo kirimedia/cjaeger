@@ -28,7 +28,7 @@ source /opt/rh/devtoolset-7/enable
 %endif
 mkdir build
 cd build
-%cmake3 $CMAKE_OPTIONS ..
+%cmake3 $CMAKE_OPTIONS -B . ..
 
 %build
 %make_build -C build
